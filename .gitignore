@@ -1,0 +1,24 @@
+# Gowin IDE generated files
+*.gprj.user
+impl/
+
+# IP core temp folders (generated, not source)
+src/dvi_tx/temp/
+
+# Simulation output
+dump.vcd
+
+# Test memory files (not needed for synthesis)
+mem/test_fb_stripes.mem
+mem/test_rom.mem
+mem/test_subroutine_rom.mem
+
+# Keep sprites.mem — needed for synthesis
+# Keep chip8-roms/ — useful for users
+
+# OS junk
+.DS_Store
+Thumbs.db
+*~
+*.gprj
+sim
