@@ -1,42 +1,45 @@
 module framebuffer ( 
-                //Control
-                input clk,                  //Synchronous memory
-                input rst,                  //To clear screen
+    input clk,
+    input rst,
+    // CPU Interface
+    input  [7:0] addr,
+    input        we,
+    output reg [7:0] data_out,
+    input  [7:0] data_in,
+    // Display Interface
+    input  [7:0] display_addr,
+    output reg [7:0] display_data_out
+);
 
-                //CPU Interface
-                input [7:0] addr,           //8-bit addressing for the 256 Bytes
-                input we,                   //Write enable, if high we write, if low we 
-                output reg[7:0] data_out,   //Byte data words, output, its a reg because it is assigned inside an always posedge block
-                input [7:0] data_in,        //Byte data words, input
+    reg [7:0] fb [0:255];
+    reg resetting;
+    reg [7:0] rst_counter;
 
-                //Display Interface
-                input [7:0] display_addr,
-                output reg[7:0] display_data_out);
-
-    reg [7:0] fb [0:255];                   //256 addresses
-    integer i;
-
-    //CPU Interface
+    // CPU write + reset logic
     always @ (posedge clk) begin
         if (rst) begin
-            for (i = 0; i < 256; i = i + 1)
-                fb[i] <= 8'h00;
-        end 
-        else if (we)
+            resetting   <= 1;
+            rst_counter <= 0;
+        end else if (resetting) begin
+            fb[rst_counter] <= 8'h00;
+            if (rst_counter == 8'hFF)
+                resetting <= 0;
+            else
+                rst_counter <= rst_counter + 1;
+        end else if (we) begin
             fb[addr] <= data_in;
-        else
-            data_out <= fb[addr];
+        end
+        data_out <= fb[addr];
     end
 
-    //Display Interface
+    // Display read port
     always @ (posedge clk) begin
         display_data_out <= fb[display_addr];
     end
-    
+
     initial begin
-        for (i = 0; i < 256; i = i + 1)
-            fb[i] = 8'h00;
-        $readmemh("mem/test_fb_stripes.mem", fb, 0);
+        $readmemh("mem/empty_fb.mem", fb, 0, 255);
+        //$readmemh("mem/test_checkers.mem", fb, 0);
     end
 
 endmodule

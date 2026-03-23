@@ -15,10 +15,9 @@ module memory ( input clk,                  //Synchronous memory
 
     integer i;
     initial begin
-        for (i = 0; i < 4096; i = i + 1)
-            ram[i] = 8'h00;
+        $readmemh("mem/empty.mem", ram, 0, 4095);
         $readmemh("mem/sprites.mem", ram, 0, 79);
-        $readmemh("mem/test_subroutine_rom.mem", ram, 512);
+        $readmemh("mem/ibm_logo.mem", ram, 512);
     end
 
 endmodule

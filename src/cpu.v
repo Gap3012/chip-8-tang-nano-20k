@@ -25,21 +25,24 @@ module cpu( // Control
     localparam DECODE     = 3'd2;
     localparam EXECUTE    = 3'd3;
 
-    reg [2:0] state;        //State machine
-    reg [2:0] next_state;   //Following state of the machine   
-    reg execution_done_comb;//Flag for when execution state is done and we can restart the state machine, combinational
+    reg [2:0] state;
+    reg [2:0] next_state;
+    reg execution_done_comb;
+
+    reg [5:0] latched_x;
+    reg [4:0] latched_y;
 
     //Registers
-    reg [7:0] V [15:0];     //V0 to VF registers
-    reg [11:0] I;           //Address register
-    reg [7:0] t_reg;        //Timer register
-    reg [7:0] s_reg;        //Sound register
-    reg [11:0] PC;          //Program Counter, stores the address of instruction to fetch
-    reg [3:0] SP;           //Stack pointer, points to current stack level to return
-    reg [11:0] stack [15:0];//16x12-bit stack with addresses, so we can have 16 levels of nested function calls
-    reg [15:0] IR;          //Instruction Register, stores the fetched instruction for decode
+    reg [7:0] V [15:0];
+    reg [11:0] I;
+    reg [7:0] t_reg;
+    reg [7:0] s_reg;
+    reg [11:0] PC;
+    reg [3:0] SP;
+    reg [11:0] stack [15:0];
+    reg [15:0] IR;
 
-    reg [15:0] lfsr;        //16-bit LFSR for random number generation
+    reg [15:0] lfsr;
 
     //Decode variables
     wire [3:0] op           = IR[15:12];
@@ -51,23 +54,24 @@ module cpu( // Control
     wire [8:0] add_result   = V[x] + V[y];
     wire [3:0] SP_minus1    = SP - 1;
 
-    //Needed for execution
     integer i;
 
-    //Key presses
     reg [3:0] key_index;
 
     //DXYN instruction
-    localparam DRAW_IDLE    = 2'd0;
-    localparam DRAW_FETCH   = 2'd1;
-    localparam DRAW_WRITE   = 2'd2;
+    localparam DRAW_IDLE             = 3'd0;
+    localparam DRAW_FETCH            = 3'd1;
+    localparam DRAW_WRITE_LEFT       = 3'd2;
+    localparam DRAW_WRITE_RIGHT      = 3'd3;
+    localparam DRAW_WRITE_RIGHT_WAIT = 3'd4;
+    localparam DRAW_WRITE_RIGHT2     = 3'd5;
 
-    reg [1:0] draw_state;    
-    reg [3:0] draw_row;     //Sprites can go from N=1 to N=15 
+    reg [2:0] draw_state;
+    reg [3:0] draw_row;
+    reg drawing;
 
-    wire [5:0] wrapped_x = V[x] & 6'h3F;                //This is equal to doing V[X] % 64
-    wire [4:0] wrapped_y = (V[y] + draw_row) & 5'h1F;   //This is equal to doing (V[y] + draw_row) % 32
-    wire [2:0] bit_pos = wrapped_x[2:0];                //This is equivalent to doing x % 8. To find which exact pixel to draw from that word
+    wire [5:0] wrapped_x = V[x] & 6'h3F;
+    wire [4:0] wrapped_y = (V[y] + draw_row) & 5'h1F;
 
     //BCD Instruction
     localparam BCD_IDLE     = 2'd0;
@@ -81,337 +85,315 @@ module cpu( // Control
     wire [7:0] bcd_tens     = (V[x] / 10) % 10;
     wire [7:0] bcd_ones     = V[x] % 10;
 
-    //Fx55
-    reg [3:0] ld_index;                                 //4-bits from 0 to 15. Useful in both Fx55 and Fx65
-    reg [1:0] ld_state;                                 //2-bits from 0 to 4. Useful in both Fx55 and Fx65
+    //Fx55 / Fx65
+    reg [3:0] ld_index;
+    reg [1:0] ld_state;
 
     localparam LD_ST_IDLE   = 2'd0;
-    localparam LD_ST_WRITE  = 2'd1;                     //Either writes to mem or reads from memory
+    localparam LD_ST_WRITE  = 2'd1;
 
-    //Fx65
     localparam LD_RD_IDLE   = 2'd0;
     localparam LD_RD_FETCH  = 2'd1;
     localparam LD_RD_STORE  = 2'd2;
 
-    // Block 1 - sequential - state register update
+    // Block 1 - sequential
     always @(posedge clk) begin
-        lfsr <= {lfsr[14:0], lfsr[15] ^ lfsr[13] ^ lfsr[11] ^ lfsr[10]};    //Generate randomness at full speed
+        lfsr <= {lfsr[14:0], lfsr[15] ^ lfsr[13] ^ lfsr[11] ^ lfsr[10]};
         if (rst) begin
-            state <= FETCH_HIGH;
-            PC    <= 12'h200;
-            SP    <= 4'd0;
-            IR    <= 16'h0000;
-            I     <= 12'h000;
-            lfsr <= 16'hACE1;           // non-zero seed
-
+            state      <= FETCH_HIGH;
+            PC         <= 12'h200;
+            SP         <= 4'd0;
+            IR         <= 16'h0000;
+            I          <= 12'h000;
+            lfsr       <= 16'hACE1;
             draw_state <= DRAW_IDLE;
-            bcd_state <= BCD_HUNDREDS;
-            ld_state <= LD_ST_IDLE;
-
+            bcd_state  <= BCD_HUNDREDS;
+            ld_state   <= LD_ST_IDLE;
+            drawing    <= 1'b0;
+            latched_x  <= 6'h0;
+            latched_y  <= 5'h0;
+            fb_rst     <= 1'b0;
+            fb_we      <= 1'b0;
+            mem_we     <= 1'b0;
             for (i = 0; i < 16; i = i + 1)
                 V[i] <= 8'h00;
-
             t_reg <= 8'h00;
             s_reg <= 8'h00;
         end
-        else if(cpu_tick) begin
+        else if (cpu_tick) begin
             case (state)
                 FETCH_HIGH: begin
-                    mem_addr <= PC; //Set address bus to read memory, will take one cycle to happen so we can't read yet
-                    PC <= PC + 1;   //Increment Program Counter
-                    fb_rst <= 0;    //Deassert fb reset just in case
-                    mem_we <= 0;    //Deassert memory we just in case
+                    mem_addr <= PC;
+                    PC       <= PC + 1;
+                    fb_rst   <= 0;
+                    mem_we   <= 0;
                 end
 
                 FETCH_LOW: begin
-                    mem_addr <= PC;                 //Set address bus to read memory, will take one cycle to happen so we can read the High Byte now
-                    IR[15:8] <= mem_data_out;       //Reading High Byte that is now available
-                    PC <= PC + 1;                   //Increment Program Counter
+                    mem_addr  <= PC;
+                    IR[15:8]  <= mem_data_out;
+                    PC        <= PC + 1;
                 end
 
                 DECODE: begin
-                    IR[7:0] <= mem_data_out;        //Reading Low Byte that is now available
+                    IR[7:0] <= mem_data_out;
                 end
 
                 EXECUTE: begin
                     case (op)
                         4'h0: begin
                             case (kk)
-                                8'hE0: begin        //Clear Display
-                                    fb_rst <= 1;    
-                                    
+                                8'hE0: begin
+                                    fb_rst <= 1;
                                 end
-
-                                8'hEE: begin            //Return from Subroutine
-                                    PC <= stack[SP_minus1];  // evaluates to stack[SP-1] correctly
+                                8'hEE: begin
+                                    PC <= stack[SP_minus1];
                                     SP <= SP_minus1;
-                                    
                                 end
-
                                 default: ;
                             endcase
                         end
 
-                        4'h1: begin                 //JP addr instruction
-                            PC <= nnn;      
-                            
+                        4'h1: begin
+                            PC <= nnn;
                         end
 
-                        4'h2: begin                 //Call Subroutine
-                            stack[SP] <= PC;        //Store actual program counter
-                            SP <= SP + 1;           //Increment stack pointer
-                            PC <= nnn;              //Set program counter to subroutine call address
-                            
+                        4'h2: begin
+                            stack[SP] <= PC;
+                            SP        <= SP + 1;
+                            PC        <= nnn;
                         end
 
                         4'h3: begin
                             if (V[x] == kk) PC <= PC + 2;
-                            
                         end
 
                         4'h4: begin
                             if (V[x] != kk) PC <= PC + 2;
-                                                        
                         end
 
                         4'h5: begin
                             if (V[x] == V[y]) PC <= PC + 2;
-                            
                         end
 
                         4'h6: begin
                             V[x] <= kk;
-                            
                         end
 
                         4'h7: begin
                             V[x] <= V[x] + kk;
-                            
                         end
 
                         4'h8: begin
                             case (n)
-                                4'h0: begin
-                                    V[x] <= V[y];
-                                end
-
-                                4'h1: begin
-                                    V[x] <= V[x] | V[y];
-                                end
-
-                                4'h2: begin
-                                    V[x] <= V[x] & V[y];
-                                end
-
-                                4'h3: begin
-                                    V[x] <= V[x] ^ V[y];
-                                end                     
-
+                                4'h0: V[x] <= V[y];
+                                4'h1: V[x] <= V[x] | V[y];
+                                4'h2: V[x] <= V[x] & V[y];
+                                4'h3: V[x] <= V[x] ^ V[y];
                                 4'h4: begin
-                                    V[x] <= add_result[7:0];
-                                    V[15] <= add_result[8]; //VF
-                                end           
-
+                                    V[x]  <= add_result[7:0];
+                                    V[15] <= add_result[8];
+                                end
                                 4'h5: begin
-                                    if (V[x] > V[y]) V[15] <= 8'h1;
-                                    else V[15] <= 8'h0;
-                                    V[x] <= V[x] - V[y];
+                                    V[15] <= (V[x] > V[y]) ? 8'h1 : 8'h0;
+                                    V[x]  <= V[x] - V[y];
                                 end
-
                                 4'h6: begin
-                                    V[15] <= V[x][0];   //LSB of Vx goes to VF
-                                    V[x] <= V[x] >> 1;  //Shift right by 1. Is dividing by 2
+                                    V[15] <= V[x][0];
+                                    V[x]  <= V[x] >> 1;
                                 end
-
                                 4'h7: begin
-                                    if (V[y] > V[x]) V[15] <= 8'h1;
-                                    else V[15] <= 8'h0;
-                                    V[x] <= V[y] - V[x];
+                                    V[15] <= (V[y] > V[x]) ? 8'h1 : 8'h0;
+                                    V[x]  <= V[y] - V[x];
                                 end
-
                                 4'hE: begin
-                                    V[15] <= V[x][7];   //MSB of Vx goes to VF
-                                    V[x] <= V[x] << 1;  //Shift lefy by 1. Is multiplying by 2
+                                    V[15] <= V[x][7];
+                                    V[x]  <= V[x] << 1;
                                 end
-
                                 default: ;
                             endcase
-                            
                         end
 
                         4'h9: begin
                             if (V[x] != V[y]) PC <= PC + 2;
-                            
                         end
 
                         4'hA: begin
                             I <= nnn;
-                            
                         end
 
                         4'hB: begin
                             PC <= nnn + V[0];
-                            
                         end
 
                         4'hC: begin
                             V[x] <= lfsr[7:0] & kk;
-                            
                         end
 
                         4'hD: begin
                             case (draw_state)
                                 DRAW_IDLE: begin
-                                    draw_row <= 4'h0;   //Set draw row to the first row
-                                    V[15] <= 8'h0;      //Set collision flag to 0. VF
-                                    fb_we <= 0;         //Set Write Enable to 0 just in case
+                                    draw_row   <= 4'h0;
+                                    V[15]      <= 8'h0;
+                                    fb_we      <= 0;
+                                    drawing    <= 1'b1;
                                     draw_state <= DRAW_FETCH;
                                 end
 
                                 DRAW_FETCH: begin
-                                    fb_we <= 0;         //To avoid corrupting data
-                                    mem_addr <= I + draw_row;                   //Request sprite byte
-                                    //Compute framebuffer address
-                                    fb_addr <= wrapped_y * 8 + wrapped_x[5:3];  //This is equivalent to 8y + x/8. Dividing by 8 is shifing right by 3 pos
-                                    draw_state <= DRAW_WRITE;
+                                    fb_we      <= 0;
+                                    mem_addr   <= I + draw_row;
+                                    fb_addr    <= wrapped_y * 8 + wrapped_x[5:3];
+                                    latched_x  <= wrapped_x;
+                                    latched_y  <= wrapped_y;
+                                    draw_state <= DRAW_WRITE_LEFT;
                                 end
 
-                                DRAW_WRITE: begin
-                                    //XOR into framebuffer
-                                    fb_data_in <= mem_data_out ^ fb_data_out;
-                                    fb_we <= 1;
-                                    //Check for collision
+                                DRAW_WRITE_LEFT: begin
+                                    fb_data_in <= (mem_data_out >> latched_x[2:0]) ^ fb_data_out;
+                                    fb_we      <= 1;
                                     if ((mem_data_out & fb_data_out) != 8'h0)
                                         V[15] <= 8'h1;
-                                    if (draw_row == n - 1) begin
-                                        draw_state <= DRAW_IDLE;    //Reset, we are done drawing
-                                        
+                                    if (latched_x[2:0] == 0) begin
+                                        // aligned — no right byte needed
+                                        if (draw_row == n - 1) begin
+                                            drawing    <= 1'b0;
+                                            draw_state <= DRAW_IDLE;
+                                        end else begin
+                                            draw_row   <= draw_row + 1;
+                                            draw_state <= DRAW_FETCH;
+                                        end
+                                    end else begin
+                                        draw_state <= DRAW_WRITE_RIGHT;
                                     end
-                                    else begin
-                                        draw_row <= draw_row + 1;   //Next row pls
+                                end
+
+                                DRAW_WRITE_RIGHT: begin
+                                    fb_we <= 0;
+                                    if (latched_x[5:3] == 3'h7) begin
+                                        // right byte would overflow row — clip it
+                                        if (draw_row == n - 1) begin
+                                            drawing    <= 1'b0;
+                                            draw_state <= DRAW_IDLE;
+                                        end else begin
+                                            draw_row   <= draw_row + 1;
+                                            draw_state <= DRAW_FETCH;
+                                        end
+                                    end else begin
+                                        fb_addr    <= latched_y * 8 + latched_x[5:3] + 1;
+                                        draw_state <= DRAW_WRITE_RIGHT_WAIT;
+                                    end
+                                end
+
+                                DRAW_WRITE_RIGHT_WAIT: begin
+                                    fb_we      <= 0;
+                                    draw_state <= DRAW_WRITE_RIGHT2;
+                                end
+
+                                DRAW_WRITE_RIGHT2: begin
+                                    fb_data_in <= (mem_data_out << (8 - latched_x[2:0])) ^ fb_data_out;
+                                    fb_we      <= 1;
+                                    if (((mem_data_out << (8 - latched_x[2:0])) & fb_data_out) != 8'h0)
+                                        V[15] <= 8'h1;
+                                    if (draw_row == n - 1) begin
+                                        drawing    <= 1'b0;
+                                        draw_state <= DRAW_IDLE;
+                                    end else begin
+                                        draw_row   <= draw_row + 1;
                                         draw_state <= DRAW_FETCH;
                                     end
                                 end
 
-                                default: begin
-                                    
-                                    draw_state <= DRAW_IDLE;
-                                end
-
+                                default: draw_state <= DRAW_IDLE;
                             endcase
                         end
 
                         4'hE: begin
-                            case(kk)
+                            case (kk)
                                 8'h9E: begin
-                                    if (keys[V[x][3:0]])  // only use lower nibble, guaranteed 0-15)
-                                        PC <= PC + 2;
-                                    
+                                    if (keys[V[x][3:0]]) PC <= PC + 2;
                                 end
-
                                 8'hA1: begin
-                                    if (!keys[V[x][3:0]])  // only use lower nibble, guaranteed 0-15)
-                                        PC <= PC + 2;
-                                                                        
+                                    if (!keys[V[x][3:0]]) PC <= PC + 2;
                                 end
-
-                                default: begin
-                                    
-                                end
+                                default: ;
                             endcase
                         end
 
                         4'hF: begin
-                            case(kk)
+                            case (kk)
                                 8'h07: begin
                                     V[x] <= t_reg;
-                                    
                                 end
 
                                 8'h0A: begin
-                                    if (keys != 16'h0000) begin        // any key pressed?
-                                        V[x] <= key_index;             // store which key
-                                                   // now we're done
-                                    end
-                                    // if no key pressed, execution_done stays 0
-                                    // CPU stays in EXECUTE, falls back here every cpu_tick                                    
+                                    if (keys != 16'h0000)
+                                        V[x] <= key_index;
                                 end
 
                                 8'h15: begin
                                     t_reg <= V[x];
-                                    
                                 end
 
                                 8'h18: begin
                                     s_reg <= V[x];
-                                    
                                 end
 
                                 8'h1E: begin
                                     I <= I + V[x];
-                                    
                                 end
 
                                 8'h29: begin
-                                    I <= (V[x][3:0] << 2) + V[x][3:0];  // x*4 + x = x*5 so its cheaper than x5 mult
-                                    
+                                    I <= (V[x][3:0] << 2) + V[x][3:0];
                                 end
 
                                 8'h33: begin
-                                    case(bcd_state)
+                                    case (bcd_state)
                                         BCD_IDLE: begin
-                                            mem_we <= 0;
+                                            mem_we    <= 0;
                                             bcd_state <= BCD_HUNDREDS;
                                         end
-
                                         BCD_HUNDREDS: begin
                                             mem_data_in <= bcd_hundreds;
-                                            mem_addr <= I;
-                                            mem_we <= 1;
-                                            bcd_state <= BCD_TENS;
+                                            mem_addr    <= I;
+                                            mem_we      <= 1;
+                                            bcd_state   <= BCD_TENS;
                                         end
-
                                         BCD_TENS: begin
                                             mem_data_in <= bcd_tens;
-                                            mem_addr <= I + 1;
-                                            mem_we <= 1;
-                                            bcd_state <= BCD_ONES;
+                                            mem_addr    <= I + 1;
+                                            mem_we      <= 1;
+                                            bcd_state   <= BCD_ONES;
                                         end
-
                                         BCD_ONES: begin
                                             mem_data_in <= bcd_ones;
-                                            mem_addr <= I + 2;
-                                            mem_we <= 1;
-                                            bcd_state <= BCD_IDLE;
-                                            
+                                            mem_addr    <= I + 2;
+                                            mem_we      <= 1;
+                                            bcd_state   <= BCD_IDLE;
                                         end
+                                        default: ;
                                     endcase
                                 end
 
                                 8'h55: begin
-                                    case(ld_state)
+                                    case (ld_state)
                                         LD_ST_IDLE: begin
-                                            mem_we <= 0;
+                                            mem_we   <= 0;
                                             ld_index <= 0;
                                             ld_state <= LD_ST_WRITE;
                                         end
-
                                         LD_ST_WRITE: begin
-                                            if (ld_index <= x) begin        //If load index less or equal to x. When it reaches x+1 it`s done
-                                                mem_addr <= I + ld_index;   //Address I + index 
-                                                mem_data_in <= V[ld_index]; //V[i], from V0 to VF
-                                                mem_we <= 1;                //Write enable
-                                                ld_index <= ld_index + 1;
+                                            if (ld_index <= x) begin
+                                                mem_addr    <= I + ld_index;
+                                                mem_data_in <= V[ld_index];
+                                                mem_we      <= 1;
+                                                ld_index    <= ld_index + 1;
                                             end else begin
                                                 ld_state <= LD_ST_IDLE;
-                                                mem_we <= 0;
-                                                
+                                                mem_we   <= 0;
                                             end
                                         end
-
-                                        default: begin
-                                            
-                                        end
+                                        default: ;
                                     endcase
                                 end
 
@@ -421,38 +403,32 @@ module cpu( // Control
                                             ld_index <= 0;
                                             ld_state <= LD_RD_FETCH;
                                         end
-
                                         LD_RD_FETCH: begin
                                             mem_addr <= I + ld_index;
                                             ld_state <= LD_RD_STORE;
                                         end
-
                                         LD_RD_STORE: begin
                                             if (ld_index <= x) begin
-                                                V[ld_index] <= mem_data_out;    //Data is now available
-                                                ld_index <= ld_index + 1;
-                                                ld_state <= LD_RD_FETCH;
+                                                V[ld_index] <= mem_data_out;
+                                                ld_index    <= ld_index + 1;
+                                                ld_state    <= LD_RD_FETCH;
                                             end else begin
                                                 ld_state <= LD_RD_IDLE;
-                                                
                                             end
                                         end
-
-                                        default: begin
-                                            
-                                        end
+                                        default: ;
                                     endcase
                                 end
+
+                                default: ;
                             endcase
                         end
 
+                        default: ;
                     endcase
                 end
 
-                default: begin
-                    
-                end
-            
+                default: ;
             endcase
             state <= next_state;
         end
@@ -468,7 +444,7 @@ module cpu( // Control
                 if (execution_done_comb)
                     next_state = FETCH_HIGH;
                 else
-                    next_state = EXECUTE;  // stay here
+                    next_state = EXECUTE;
             end
             default: next_state = FETCH_HIGH;
         endcase
@@ -476,7 +452,7 @@ module cpu( // Control
 
     // Block 3 - combinational - key indexer
     always @(*) begin
-        key_index = 4'h0;  // default
+        key_index = 4'h0;
         if      (keys[0])  key_index = 4'h0;
         else if (keys[1])  key_index = 4'h1;
         else if (keys[2])  key_index = 4'h2;
@@ -495,7 +471,7 @@ module cpu( // Control
         else if (keys[15]) key_index = 4'hF;
     end
 
-    // Block 4 - combinational execution done calculator, to update instantly
+    // Block 4 - combinational - execution done
     always @(*) begin
         execution_done_comb = 0;
         if (state == EXECUTE) begin
