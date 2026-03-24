@@ -17,7 +17,7 @@ module memory ( input clk,                  //Synchronous memory
     initial begin
         $readmemh("mem/empty.mem", ram, 0, 4095);
         $readmemh("mem/sprites.mem", ram, 0, 79);
-        $readmemh("mem/ibm_logo.mem", ram, 512);
+        //$readmemh("mem/ibm_logo.mem", ram, 512);
     end
 
 endmodule

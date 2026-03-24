@@ -14,21 +14,22 @@ module display (
     output     [7:0] data_b
 );
 
+//For 720p@60Hz
 //Horizontal Sync Parameters
-localparam h_active      = 800;
-localparam h_front_porch = 40;
-localparam h_sync_pulse  = 128;
-localparam h_back_porch  = 88;
-localparam h_total       = 1496;
+localparam h_active      = 1280;
+localparam h_front_porch = 110;
+localparam h_sync_pulse  = 40;
+localparam h_back_porch  = 220;
+localparam h_total       = 1650;
 localparam h_sync_start  = h_active + h_front_porch;
 localparam h_sync_end    = h_sync_start + h_sync_pulse;
 
 //Vertical Sync Parameters
-localparam v_active      = 600;
-localparam v_front_porch = 1;
-localparam v_sync_pulse  = 4;
-localparam v_back_porch  = 23;
-localparam v_total       = 662;
+localparam v_active      = 720;
+localparam v_front_porch = 5;
+localparam v_sync_pulse  = 5;
+localparam v_back_porch  = 20;
+localparam v_total       = 750;
 localparam v_sync_start  = v_active + v_front_porch;
 localparam v_sync_end    = v_sync_start + v_sync_pulse;
 
@@ -36,9 +37,9 @@ localparam v_sync_end    = v_sync_start + v_sync_pulse;
 reg [10:0] hcount;
 reg [10:0] vcount;
 
-//Scaling
-wire [5:0] chip8_x = ((hcount + 2) < 768) ? (hcount + 2) / 12 : 63;
-wire [5:0] chip8_y = (vcount < 576) ? vcount / 18 : 31;
+//Scaling. 20x. Square pixels centered
+wire [5:0] chip8_x = hcount / 20;
+wire [5:0] chip8_y = (vcount - 40)/20;
 
 //Sync/timing assigns
 assign hsync = ((hcount >= h_sync_start) && (hcount < h_sync_end)) ? 1'b1 : 1'b0;
@@ -60,27 +61,10 @@ always @(posedge pixel_clk) begin
     chip8_x_bit_d2 <= chip8_x_bit_d1;
 end
 
-//de pipeline — must match fb latency (2 cycles)
-reg de_reg1;
-reg de_reg2;
-always @(posedge pixel_clk) begin
-    de_reg1 <= (hcount < h_active) && (vcount < v_active);
-    de_reg2 <= de_reg1;
-end
-assign de = de_reg2;
-
-//Color output
-//de pipeline — must match fb latency (2 cycles)
-reg de_reg1;
-reg de_reg2;
-always @(posedge pixel_clk) begin
-    de_reg1 <= (hcount < h_active) && (vcount < v_active);
-    de_reg2 <= de_reg1;
-end
-assign de = de_reg2;
+assign de = (hcount < h_active) && (vcount < v_active);
 
 //chip8_valid pipeline — gates boundary pixels, must match fb latency (2 cycles)
-wire chip8_valid = ((hcount + 2) < 768) && (vcount < 576);
+wire chip8_valid = (hcount < 1280) && (vcount >= 40) && (vcount < 680);
 reg chip8_valid_d1;
 reg chip8_valid_d2;
 always @(posedge pixel_clk) begin

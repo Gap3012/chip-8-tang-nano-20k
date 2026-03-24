@@ -1,0 +1,27 @@
+-series GW2AR
+-device GW2AR-18
+-device_version C
+-package QFN88
+-part_number GW2AR-LV18QN88C8/I7
+
+
+-mod_name Gowin_DP
+-file_name framebuffer
+-path /home/gap3012/fpga-projects/chip-8/src/gowin_dp/
+-type RAM_DP
+-file_type vlg
+-bram_b true
+-dev_type GW2AR-18C
+-ip_version 1.0
+-depth_0 256
+-depth_1 256
+-width_0 8
+-width_1 8
+-read_mode_0 pipeline
+-read_mode_1 pipeline
+-write_mode_0 normal
+-write_mode_1 normal
+-speed false
+-reset_mode sync
+-init_file /home/gap3012/fpga-projects/chip-8/mem/ibm_logo_fb_fixed.mi
+-init_match port_A

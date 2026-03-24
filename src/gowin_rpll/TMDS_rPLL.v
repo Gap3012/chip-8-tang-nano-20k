@@ -37,11 +37,12 @@ rPLL rpll_inst (
     .FDLY({gw_gnd,gw_gnd,gw_gnd,gw_gnd})
 );
 
+//Output frequency is 5x pixel clk for serial clock. Its 371.25MHz for the 720p@60Hz. And that /5 is the pixel_clk which is 74.25MHz
 defparam rpll_inst.FCLKIN = "27";
 defparam rpll_inst.DYN_IDIV_SEL = "false";
-defparam rpll_inst.IDIV_SEL = 1;
+defparam rpll_inst.IDIV_SEL = 3;    //Div is 1+IDIV SO 4
 defparam rpll_inst.DYN_FBDIV_SEL = "false";
-defparam rpll_inst.FBDIV_SEL = 21;
+defparam rpll_inst.FBDIV_SEL = 54;  //Mult is 1+FBDIV so 55
 defparam rpll_inst.DYN_ODIV_SEL = "false";
 defparam rpll_inst.ODIV_SEL = 2;
 defparam rpll_inst.PSDA_SEL = "0000";

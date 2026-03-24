@@ -39,6 +39,14 @@ wire [7:0] mem_data_out;
 wire [7:0] mem_data_in;
 wire mem_we;
 
+// intantiate memory
+memory memory(
+    .clk(I_clk),
+    .addr(mem_addr),
+    .data_in(mem_data_in),
+    .data_out(mem_data_out),
+    .we(mem_we));
+
 // instantiate CPU
 cpu cpu (
     //Control
@@ -59,34 +67,17 @@ cpu cpu (
     //Keys
     .keys(16'd0));
 
-// intantiate memory
-memory memory(
-    .clk(I_clk),
-    .addr(mem_addr),
-    .data_in(mem_data_in),
-    .data_out(mem_data_out),
-    .we(mem_we));
-
-// instantiate framebuffer
-framebuffer fb (
-    //Control
-    .clk(I_clk),
-    .rst(1'd0),
-    //Display wires
-    .display_addr(fb_disp_addr),
-    .display_data_out(fb_disp_data),
-    //CPU Wires
-    .we(1'd0),
-    .data_in(fb_data_in), 
-    .data_out(fb_data_out),
-    .addr(fb_addr));
-
 // instantiate video_top
 video_top video(
     .I_clk(I_clk),
     .I_rst(I_rst),
-    .fb_display_addr(fb_disp_addr),
-    .fb_display_data_out(fb_disp_data),
+    //CPU Interface
+    .cpu_fb_addr(fb_addr),
+    .cpu_fb_we(fb_we),
+    .cpu_fb_rst(fb_rst),
+    .cpu_fb_data_out(fb_data_out),
+    .cpu_fb_data_in(fb_data_in),
+    .cpu_tick(cpu_tick),
     .O_tmds_clk_n(O_tmds_clk_n),
     .O_tmds_clk_p(O_tmds_clk_p),
     .O_tmds_data_n(O_tmds_data_n),
