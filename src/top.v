@@ -71,12 +71,12 @@ memory memory(
 framebuffer fb (
     //Control
     .clk(I_clk),
-    .rst(fb_rst),
+    .rst(1'd0),
     //Display wires
     .display_addr(fb_disp_addr),
     .display_data_out(fb_disp_data),
     //CPU Wires
-    .we(fb_we),
+    .we(1'd0),
     .data_in(fb_data_in), 
     .data_out(fb_data_out),
     .addr(fb_addr));

@@ -39,7 +39,7 @@ module framebuffer (
 
     initial begin
         $readmemh("mem/empty_fb.mem", fb, 0, 255);
-        //$readmemh("mem/test_checkers.mem", fb, 0);
+        $readmemh("mem/ibm_logo_fb.mem", fb, 0);
     end
 
 endmodule
