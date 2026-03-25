@@ -121,7 +121,7 @@ module video_top
     display display(
         .pixel_clk(pix_clk),
         .rst(~hdmi4_rst_n),             //Display expects active high
-        .fb_data_out(fb_display_data_out),
+        .fb_data_out(fb_display_data_out),  //Input
         .fb_addr(fb_display_addr),
         .de(disp_de),
         .vsync(disp_vs),

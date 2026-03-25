@@ -6,7 +6,7 @@ impl/
 src/dvi_tx/temp/
 
 # Simulation output
-dump.vcd
+*.vcd
 
 # Test memory files (not needed for synthesis)
 mem/test_fb_stripes.mem

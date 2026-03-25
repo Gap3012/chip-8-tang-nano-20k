@@ -38,43 +38,28 @@ reg [10:0] hcount;
 reg [10:0] vcount;
 
 //Scaling. 20x. Square pixels centered
-wire [5:0] chip8_x = hcount / 20;
-wire [5:0] chip8_y = (vcount - 40)/20;
+wire [5:0] chip8_x = (hcount) / 20;
+wire [5:0] chip8_x_prefetch = ((hcount + 1) < 1280) ? ((hcount + 1) / 20) : 6'd63;  //Clamped so it doesn't go out of bounds
+wire [5:0] chip8_y = (vcount >= 40) ? ((vcount - 40) / 20) : 6'd0;
 
 //Sync/timing assigns
 assign hsync = ((hcount >= h_sync_start) && (hcount < h_sync_end)) ? 1'b1 : 1'b0;
 assign vsync = ((vcount >= v_sync_start) && (vcount < v_sync_end)) ? 1'b1 : 1'b0;
 
-//FB address pipeline — two cycle latency
-wire [7:0] fb_addr_internal = chip8_y * 8 + chip8_x[5:3];
-reg  [7:0] fb_addr_reg;
-always @(posedge pixel_clk) begin
-    fb_addr_reg <= fb_addr_internal;
-end
-assign fb_addr = fb_addr_reg;
+assign fb_addr = chip8_y * 8 + chip8_x_prefetch[5:3];
 
-//chip8_x[2:0] pipeline — must match fb latency (2 cycles)
-reg [2:0] chip8_x_bit_d1;
-reg [2:0] chip8_x_bit_d2;
+// 1 cycle pipeline to match BRAM bypass latency
+reg       chip8_valid_d1;
+
 always @(posedge pixel_clk) begin
-    chip8_x_bit_d1 <= chip8_x[2:0];
-    chip8_x_bit_d2 <= chip8_x_bit_d1;
+    chip8_valid_d1 <= (hcount < 1280) && (vcount >= 40) && (vcount < 680);
 end
 
 assign de = (hcount < h_active) && (vcount < v_active);
 
-//chip8_valid pipeline — gates boundary pixels, must match fb latency (2 cycles)
-wire chip8_valid = (hcount < 1280) && (vcount >= 40) && (vcount < 680);
-reg chip8_valid_d1;
-reg chip8_valid_d2;
-always @(posedge pixel_clk) begin
-    chip8_valid_d1 <= chip8_valid;
-    chip8_valid_d2 <= chip8_valid_d1;
-end
-
-assign data_r = (chip8_valid_d2 && fb_data_out[7 - chip8_x_bit_d2]) ? 8'hFF : 8'h00;
-assign data_g = (chip8_valid_d2 && fb_data_out[7 - chip8_x_bit_d2]) ? 8'hA0 : 8'h00;
-assign data_b = 8'd0;
+assign data_r = (chip8_valid_d1 && fb_data_out[7 - chip8_x[2:0]]) ? 8'hFF : 8'h00;
+assign data_g = (chip8_valid_d1 && fb_data_out[7 - chip8_x[2:0]]) ? 8'hA0 : 8'h00;
+assign data_b = 8'h00;
 
 //Counter logic
 always @(posedge pixel_clk) begin
