@@ -78,6 +78,7 @@ video_top video(
     .cpu_fb_data_out(fb_data_out),
     .cpu_fb_data_in(fb_data_in),
     .cpu_tick(cpu_tick),
+    //HDMI Output
     .O_tmds_clk_n(O_tmds_clk_n),
     .O_tmds_clk_p(O_tmds_clk_p),
     .O_tmds_data_n(O_tmds_data_n),
