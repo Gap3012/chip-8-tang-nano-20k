@@ -59,6 +59,16 @@ module video_top
     defparam u_clkdiv.DIV_MODE="5";
     defparam u_clkdiv.GSREN="false";
 
+    // Detect rising edge of hdmi4_rst_n (PLL just locked, coming out of reset)
+    reg hdmi4_rst_n_prev;
+    always @(posedge pix_clk or posedge I_rst) begin
+        if (I_rst)
+            hdmi4_rst_n_prev <= 1'b0;  // force to 0 so rising edge is detected
+        else
+            hdmi4_rst_n_prev <= hdmi4_rst_n;
+    end
+    wire post_reset_clear = hdmi4_rst_n & ~hdmi4_rst_n_prev; // rising edge
+
     // Clear state machine
     reg [1:0]  clear_state;
     localparam CLEAR_IDLE       = 2'd0;
@@ -71,31 +81,36 @@ module video_top
     wire [7:0] bram_adb  = clearing ? clear_addr      : fb_display_addr;
     wire       bram_wreb = clearing ? 1'b1            : 1'b0;
 
-    always @(posedge pix_clk) begin
+    always @(posedge pix_clk or posedge I_rst) begin
+    if (I_rst) begin
+        clear_state <= CLEAR_IDLE;
+        clear_addr  <= 8'd0;
+    end else begin
         case(clear_state)
             CLEAR_IDLE: begin
-                if(cpu_fb_rst) begin
-                     clear_state <= CLEAR_ACTIVE;
-                     clear_addr <= 8'd0;
-                end
+                if(cpu_fb_rst | post_reset_clear) begin
+                    clear_state <= CLEAR_ACTIVE;
+                    clear_addr  <= 8'd0;
+                end 
             end
-
             CLEAR_ACTIVE: begin
                 if(clear_addr < 8'hFF)
                     clear_addr <= clear_addr + 1;
                 else begin
-                    clear_addr <= 8'd0; //Reset this counter
+                    clear_addr  <= 8'd0;
                     clear_state <= CLEAR_DONE;
                 end    
             end
-            
             CLEAR_DONE: begin
-                if(!cpu_fb_rst) clear_state <= CLEAR_IDLE;
+                if(cpu_fb_rst | post_reset_clear)
+                    clear_state <= CLEAR_ACTIVE;
+                else
+                    clear_state <= CLEAR_IDLE;
             end
-
             default: clear_state <= CLEAR_IDLE;
         endcase
     end
+end
 
     //Framebuffer. Port A is CPU port @ 500Hz, Port B is Display Port @ pixel clk speed
     Gowin_DP framebuffer(

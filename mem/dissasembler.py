@@ -1,6 +1,6 @@
 import csv
 
-FILENAME = "ibm_logo"
+FILENAME = "test/alu/alu_test_fixed"
 
 # Read bytes from {FILENAME}.mem in the same directory
 with open(f"{FILENAME}.mem", "r") as f:

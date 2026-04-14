@@ -1,10 +1,15 @@
 module top (
+    //Control
     input   I_clk,
     input   I_rst,
+    //HDMI
     output          O_tmds_clk_p,
     output          O_tmds_clk_n,
     output  [2:0]   O_tmds_data_p,
-    output  [2:0]   O_tmds_data_n);
+    output  [2:0]   O_tmds_data_n,
+    //Keypad
+    input   [3:0]   col,
+    output  [3:0]   row);
 // ── CPU tick divider ──────────────────────────────────────────
 // 27MHz / 40000 = ~675Hz (within 500-1000Hz range)
 reg [15:0] cpu_tick_counter;
@@ -33,11 +38,15 @@ wire [7:0] fb_data_in;
 wire [7:0] fb_data_out;
 wire fb_we;
 wire fb_rst;
+
 // memory wires
 wire [11:0] mem_addr;
 wire [7:0] mem_data_out;
 wire [7:0] mem_data_in;
 wire mem_we;
+
+// key wires
+wire [15:0] keys;
 
 // intantiate memory
 memory memory(
@@ -65,7 +74,7 @@ cpu cpu (
     .fb_we(fb_we),
     .fb_rst(fb_rst),
     //Keys
-    .keys(16'd0));
+    .keys(keys));   //Input
 
 // instantiate video_top
 video_top video(
@@ -83,4 +92,13 @@ video_top video(
     .O_tmds_clk_p(O_tmds_clk_p),
     .O_tmds_data_n(O_tmds_data_n),
     .O_tmds_data_p(O_tmds_data_p));
+
+// instantiate key
+key key(
+    .clk(I_clk),
+    .rst(I_rst),
+    .row(row),
+    .col(col),
+    .keys(keys)     //Output
+);
 endmodule

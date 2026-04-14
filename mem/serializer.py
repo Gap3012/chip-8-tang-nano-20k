@@ -1,6 +1,6 @@
-FILENAME = "ibm_logo_fb"
+FILENAME = "test/alu/alu_test"
 
-with open(f"{FILENAME}.mi", "r") as f:
+with open(f"{FILENAME}.mem", "r") as f:
     lines = f.readlines()
 
 # Separate header lines from data lines
@@ -15,7 +15,7 @@ for line in lines:
         # Split space-separated bytes
         data_bytes.extend(line.split())
 
-with open(f"{FILENAME}_fixed.mi", "w") as f:
+with open(f"{FILENAME}_fixed.mem", "w") as f:
     for h in header:
         f.write(h + "\n")
     for byte in data_bytes:

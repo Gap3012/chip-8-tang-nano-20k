@@ -1,0 +1,36 @@
+Mnemonic              Encoding    Notes
+─────────────────────────────────────────────────────
+CLS                   00 E0
+RET                   00 EE
+JP   addr             1N NN       addr = NNN
+CALL addr             2N NN
+SE   Vx, kk           3X KK
+SNE  Vx, kk           4X KK
+SE   Vx, Vy           5X Y0
+LD   Vx, kk           6X KK
+ADD  Vx, kk           7X KK
+LD   Vx, Vy           8X Y0
+OR   Vx, Vy           8X Y1
+AND  Vx, Vy           8X Y2
+XOR  Vx, Vy           8X Y3
+ADD  Vx, Vy           8X Y4
+SUB  Vx, Vy           8X Y5
+SHR  Vx               8X 06
+SUBN Vx, Vy           8X Y7
+SHL  Vx               8X 0E
+SNE  Vx, Vy           9X Y0
+LD   I, addr          AN NN
+JP   V0, addr         BN NN
+RND  Vx, kk           CX KK
+DRW  Vx, Vy, n        DX YN
+SKP  Vx               EX 9E      skip if key Vx pressed
+SKNP Vx               EX A1      skip if key Vx not pressed
+LD   Vx, DT           FX 07
+LD   Vx, K            FX 0A
+LD   DT, Vx           FX 15
+LD   ST, Vx           FX 18
+ADD  I, Vx            FX 1E
+LD   F, Vx            FX 29      I = font sprite for Vx
+LD   B, Vx            FX 33      BCD
+LD   [I], Vx          FX 55      store V0..Vx to mem
+LD   Vx, [I]          FX 65      load V0..Vx from mem

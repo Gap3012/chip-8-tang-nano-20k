@@ -72,7 +72,7 @@ module tb_cpu;
         repeat(4) @(posedge clk);  // hold reset for 4 cycles
         rst <= 0;
         
-        repeat(200) @(posedge clk);  // run for 200 cycles, watch it loop
+        repeat(2500) @(posedge clk);  // run for 200 cycles, watch it loop
         
         $finish;
     end
