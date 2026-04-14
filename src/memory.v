@@ -17,7 +17,7 @@ module memory ( input clk,                  //Synchronous memory
     initial begin
         $readmemh("mem/empty.mem", ram, 0, 4095);
         $readmemh("mem/sprites.mem", ram, 0, 79);
-        $readmemh("assembler/output/boat.mem", ram, 512);
+        $readmemh("assembler/output/test.mem", ram, 512);
         //$readmemh("mem/test/alu/alu_test.mem", ram, 512);
     end
 

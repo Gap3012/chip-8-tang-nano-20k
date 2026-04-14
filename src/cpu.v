@@ -88,13 +88,16 @@ module cpu( // Control
     //Fx55 / Fx65
     reg [3:0] ld_index;
     reg [1:0] ld_state;
+    reg ld_done;
 
     localparam LD_ST_IDLE   = 2'd0;
     localparam LD_ST_WRITE  = 2'd1;
+    localparam LD_ST_DONE   = 2'd2;
 
     localparam LD_RD_IDLE   = 2'd0;
     localparam LD_RD_FETCH  = 2'd1;
     localparam LD_RD_STORE  = 2'd2;
+    localparam LD_RD_DONE   = 2'd3;
 
     //RNG
     reg [15:0] entropy;
@@ -155,6 +158,7 @@ module cpu( // Control
             t_reg <= 8'h00;
             s_reg <= 8'h00;
             key_was_pressed <= 0;
+            ld_done  <= 0;
         end
         else if (cpu_tick) begin
             $display("PC=%03h IR=%04h ld_index=%04h ld_state=%02h exec = %01h| V0=%02h V1=%02h V2=%02h V3=%02h V4=%02h V5=%02h V6=%02h V7=%02h V8=%02h V9=%02h VA=%02h VB=%02h VC=%02h VD=%02h VE=%02h VF=%02h | I=%04h",
@@ -431,18 +435,26 @@ module cpu( // Control
                                             mem_we   <= 0;
                                             ld_index <= 0;
                                             ld_state <= LD_ST_WRITE;
+                                            ld_done  <= 0;
                                         end
 
                                         LD_ST_WRITE: begin
                                             mem_addr    <= I + ld_index;
                                             mem_data_in <= V[ld_index];
                                             mem_we      <= 1;
+                                            ld_done     <= 0;
                                             if (ld_index == x) begin
-                                                ld_state <= LD_ST_IDLE;
-                                                ld_index <= 0;
+                                                ld_state <= LD_ST_DONE;
                                             end else begin
                                                 ld_index <= ld_index + 1;
                                             end
+                                        end
+
+                                        LD_ST_DONE: begin
+                                            mem_we   <= 0;
+                                            ld_index <= 0;
+                                            ld_state <= LD_ST_IDLE;
+                                            ld_done  <= 1;   // set exactly one cycle after last write
                                         end
                                         
                                         default: ;
@@ -453,21 +465,31 @@ module cpu( // Control
                                     case (ld_state)
                                         LD_RD_IDLE: begin
                                             ld_index <= 0;
+                                            ld_done  <= 0;
                                             ld_state <= LD_RD_FETCH;
                                         end
+
                                         LD_RD_FETCH: begin
                                             mem_addr <= I + ld_index;
                                             ld_state <= LD_RD_STORE;
                                         end
+
                                         LD_RD_STORE: begin
-                                            if (ld_index <= x) begin
-                                                V[ld_index] <= mem_data_out;
-                                                ld_index    <= ld_index + 1;
-                                                ld_state    <= LD_RD_FETCH;
+                                            V[ld_index] <= mem_data_out;
+                                            if (ld_index == x) begin
+                                                ld_state <= LD_RD_DONE;  // last byte stored, exit cleanly
                                             end else begin
-                                                ld_state <= LD_RD_IDLE;
+                                                ld_index <= ld_index + 1;
+                                                ld_state <= LD_RD_FETCH;
                                             end
                                         end
+
+                                        LD_RD_DONE: begin
+                                            ld_index <= 0;
+                                            ld_done  <= 1;
+                                            ld_state <= LD_RD_IDLE;
+                                        end
+
                                         default: ;
                                     endcase
                                 end
@@ -552,8 +574,8 @@ module cpu( // Control
                         8'h1E: execution_done_comb = 1;
                         8'h29: execution_done_comb = 1;
                         8'h33: execution_done_comb = (bcd_state == BCD_ONES);
-                        8'h55: execution_done_comb = (ld_state == LD_ST_WRITE) && (ld_index == x);
-                        8'h65: execution_done_comb = (ld_state == LD_RD_STORE) && (ld_index == x);
+                        8'h55: execution_done_comb = ld_done;
+                        8'h65: execution_done_comb = ld_done;
                         default: execution_done_comb = 1;
                     endcase
                 end

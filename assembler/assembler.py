@@ -17,13 +17,16 @@ def tokenize(source):
             if not tokens[0].endswith(':'):  # labels don't advance address
                 addr += 2
     if debug:
-        addr = start_addr
+        addr = 0x200
         for lineno, toks in result:
-            if not toks[0].endswith(':'):
-                print(f"  0x{addr:03X}: {toks}")
-                addr += 2
-            else:
+            if toks[0].endswith(':'):
                 print(f"  {'---':5s}: {toks}")
+            else:
+                print(f"  0x{addr:03X}: {toks}")
+                if toks[0].upper() == 'DB':
+                    addr += len(toks) - 1   # one byte per token
+                else:
+                    addr += 2
     return result
 
 def first_pass(tokens):
@@ -66,106 +69,160 @@ def first_pass(tokens):
     return labels   # hand the symbol table to second_pass
 
 def resolve(token, labels):
-    """Turn a token into an integer — handle hex, decimal, labels."""
     if token in labels:
         return labels[token]
-    elif token.startswith('0x') or token.startswith('0X'):
-        return int(token, 16)
     else:
-        return int(token, 0)
+        return int(token, 16)   # everything is hex unless prefixed with 0x
 
 def encode(toks, labels, addr):
-    """
-    YOUR JOB: given a token list, return a 2-byte integer.
-    
-    Examples:
-        ['CLS']              → 0x00E0
-        ['JP', 'loop']       → 0x1NNN  where NNN = labels['loop']
-        ['LD', 'V2', '0A']   → 0x620A
-        ['ADD', 'V0', 'V1']  → 0x8014
-        ['DRW', 'V0', 'V1', '5'] → 0xD015
-    """
-    mnemonic = toks[0].upper()  #Turn into uppercase no matter what the programmer wrote
+    mnemonic = toks[0].upper()
 
     if mnemonic == 'CLS':
         return 0x00E0
+
     elif mnemonic == 'RET':
         return 0x00EE
+
     elif mnemonic == 'JP':
-        nnn = resolve(toks[1],labels)
-        return 0x1000 | nnn;
+        nnn = resolve(toks[1], labels)
+        return 0x1000 | nnn
+
+    elif mnemonic == 'CALL':
+        nnn = resolve(toks[1], labels)
+        return 0x2000 | nnn
+
+    elif mnemonic == 'SE':
+        t1 = toks[1].upper()
+        t2 = toks[2].upper()
+        if t1 in REGISTERS and t2 in REGISTERS:    # SE Vx, Vy
+            x = REGISTERS[t1]
+            y = REGISTERS[t2]
+            return 0x5000 | (x << 8) | (y << 4)
+        elif t1 in REGISTERS:                       # SE Vx, kk
+            x  = REGISTERS[t1]
+            kk = resolve(toks[2], labels)
+            return 0x3000 | (x << 8) | kk
+        else:
+            raise ValueError(f"Unknown SE variant: {toks}")
+
+    elif mnemonic == 'SNE':
+        t1 = toks[1].upper()
+        t2 = toks[2].upper()
+        if t1 in REGISTERS and t2 in REGISTERS:    # SNE Vx, Vy
+            x = REGISTERS[t1]
+            y = REGISTERS[t2]
+            return 0x9000 | (x << 8) | (y << 4)
+        elif t1 in REGISTERS:                       # SNE Vx, kk
+            x  = REGISTERS[t1]
+            kk = resolve(toks[2], labels)
+            return 0x4000 | (x << 8) | kk
+        else:
+            raise ValueError(f"Unknown SNE variant: {toks}")
+
+    elif mnemonic == 'OR':
+        x = REGISTERS[toks[1].upper()]
+        y = REGISTERS[toks[2].upper()]
+        return 0x8001 | (x << 8) | (y << 4)
+
+    elif mnemonic == 'AND':
+        x = REGISTERS[toks[1].upper()]
+        y = REGISTERS[toks[2].upper()]
+        return 0x8002 | (x << 8) | (y << 4)
+
+    elif mnemonic == 'XOR':
+        x = REGISTERS[toks[1].upper()]
+        y = REGISTERS[toks[2].upper()]
+        return 0x8003 | (x << 8) | (y << 4)
+
+    elif mnemonic == 'SUB':
+        x = REGISTERS[toks[1].upper()]
+        y = REGISTERS[toks[2].upper()]
+        return 0x8005 | (x << 8) | (y << 4)
+
+    elif mnemonic == 'SHR':
+        x = REGISTERS[toks[1].upper()]
+        return 0x8006 | (x << 8)
+
+    elif mnemonic == 'SUBN':
+        x = REGISTERS[toks[1].upper()]
+        y = REGISTERS[toks[2].upper()]
+        return 0x8007 | (x << 8) | (y << 4)
+
+    elif mnemonic == 'SHL':
+        x = REGISTERS[toks[1].upper()]
+        return 0x800E | (x << 8)
+
+    elif mnemonic == 'RND':
+        x  = REGISTERS[toks[1].upper()]
+        kk = resolve(toks[2], labels)
+        return 0xC000 | (x << 8) | kk
+
+    elif mnemonic == 'SKP':
+        x = REGISTERS[toks[1].upper()]
+        return 0xE09E | (x << 8)
+
+    elif mnemonic == 'SKNP':
+        x = REGISTERS[toks[1].upper()]
+        return 0xE0A1 | (x << 8)
+
     elif mnemonic == 'LD':
         t1 = toks[1].upper()
         t2 = toks[2].upper()
-
-        if t1 == 'I':                        # LD I, addr
+        if t1 == 'I':
             nnn = resolve(toks[2], labels)
             return 0xA000 | nnn
-
-        elif t1 == 'DT':                     # LD DT, Vx
+        elif t1 == 'DT':
             x = REGISTERS[t2]
             return 0xF015 | (x << 8)
-
-        elif t1 == 'ST':                     # LD ST, Vx
+        elif t1 == 'ST':
             x = REGISTERS[t2]
             return 0xF018 | (x << 8)
-
-        elif t1 == 'F':                      # LD F, Vx  (font)
+        elif t1 == 'F':
             x = REGISTERS[t2]
             return 0xF029 | (x << 8)
-
-        elif t1 == 'B':                      # LD B, Vx  (BCD)
+        elif t1 == 'B':
             x = REGISTERS[t2]
             return 0xF033 | (x << 8)
-
-        elif t1 == '[I]':                    # LD [I], Vx  (store)
+        elif t1 == '[I]':
             x = REGISTERS[t2]
             return 0xF055 | (x << 8)
-
-        elif t2 == '[I]':                    # LD Vx, [I]  (load)
+        elif t2 == '[I]':
             x = REGISTERS[t1]
             return 0xF065 | (x << 8)
-
-        elif t2 == 'DT':                     # LD Vx, DT
+        elif t2 == 'DT':
             x = REGISTERS[t1]
             return 0xF007 | (x << 8)
-
-        elif t2 == 'K':                      # LD Vx, K
+        elif t2 == 'K':
             x = REGISTERS[t1]
             return 0xF00A | (x << 8)
-
-        elif t1 in REGISTERS and t2 in REGISTERS:  # LD Vx, Vy
+        elif t1 in REGISTERS and t2 in REGISTERS:
             x = REGISTERS[t1]
             y = REGISTERS[t2]
             return 0x8000 | (x << 8) | (y << 4)
-
-        elif t1 in REGISTERS:                # LD Vx, kk
+        elif t1 in REGISTERS:
             x  = REGISTERS[t1]
             kk = resolve(toks[2], labels)
             return 0x6000 | (x << 8) | kk
-
         else:
             raise ValueError(f"Unknown LD variant: {toks}")
+
     elif mnemonic == 'ADD':
         t1 = toks[1].upper()
         t2 = toks[2].upper()
-
-        if t1 == 'I':                        # ADD I, Vx
+        if t1 == 'I':
             x = REGISTERS[t2]
             return 0xF01E | (x << 8)
-
-        elif t1 in REGISTERS and t2 in REGISTERS:  # ADD Vx, Vy
+        elif t1 in REGISTERS and t2 in REGISTERS:
             x = REGISTERS[t1]
             y = REGISTERS[t2]
             return 0x8004 | (x << 8) | (y << 4)
-
-        elif t1 in REGISTERS:                # ADD Vx, kk
+        elif t1 in REGISTERS:
             x  = REGISTERS[t1]
             kk = resolve(toks[2], labels)
             return 0x7000 | (x << 8) | kk
-
         else:
             raise ValueError(f"Unknown ADD variant: {toks}")
+
     elif mnemonic == 'DRW':
         x = REGISTERS[toks[1].upper()]
         y = REGISTERS[toks[2].upper()]
